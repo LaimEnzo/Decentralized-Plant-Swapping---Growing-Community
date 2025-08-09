@@ -8,6 +8,7 @@
 (define-data-var next-plant-id uint u1)
 (define-data-var next-swap-id uint u1)
 (define-data-var next-contest-id uint u1)
+(define-data-var next-care-log-id uint u1)
 
 (define-map plants
   uint
@@ -68,6 +69,35 @@
 (define-map contest-votes
   {contest-id: uint, voter: principal, plant-id: uint}
   bool
+)
+
+(define-map care-logs
+  uint
+  {
+    plant-id: uint,
+    owner: principal,
+    care-type: uint,
+    timestamp: uint,
+    notes: (string-ascii 100)
+  }
+)
+
+(define-map plant-care-streaks
+  {plant-id: uint, care-type: uint}
+  {
+    current-streak: uint,
+    longest-streak: uint,
+    last-care-block: uint
+  }
+)
+
+(define-map user-care-stats
+  principal
+  {
+    total-care-actions: uint,
+    care-points: uint,
+    longest-overall-streak: uint
+  }
 )
 
 (define-public (mint-plant 
@@ -254,6 +284,65 @@
   )
 )
 
+(define-public (log-plant-care
+  (plant-id uint)
+  (care-type uint)
+  (notes (string-ascii 100))
+)
+  (let ((plant (unwrap! (map-get? plants plant-id) err-not-found))
+        (care-log-id (var-get next-care-log-id))
+        (streak-key {plant-id: plant-id, care-type: care-type})
+        (current-streak (default-to {current-streak: u0, longest-streak: u0, last-care-block: u0}
+                                   (map-get? plant-care-streaks streak-key)))
+        (user-stats (default-to {total-care-actions: u0, care-points: u0, longest-overall-streak: u0}
+                               (map-get? user-care-stats tx-sender)))
+        (blocks-since-last (- stacks-block-height (get last-care-block current-streak)))
+        (streak-continues (and (> (get last-care-block current-streak) u0) (<= blocks-since-last u144)))
+        (new-current-streak (if streak-continues 
+                              (+ (get current-streak current-streak) u1)
+                              u1))
+        (new-longest-streak (max-uint (get longest-streak current-streak) new-current-streak))
+        (care-points (get-care-points care-type new-current-streak)))
+    (asserts! (is-eq (get owner plant) tx-sender) err-unauthorized)
+    (asserts! (<= care-type u6) err-invalid-params)
+    (map-set care-logs care-log-id {
+      plant-id: plant-id,
+      owner: tx-sender,
+      care-type: care-type,
+      timestamp: stacks-block-height,
+      notes: notes
+    })
+    (map-set plant-care-streaks streak-key {
+      current-streak: new-current-streak,
+      longest-streak: new-longest-streak,
+      last-care-block: stacks-block-height
+    })
+    (map-set user-care-stats tx-sender {
+      total-care-actions: (+ (get total-care-actions user-stats) u1),
+      care-points: (+ (get care-points user-stats) care-points),
+      longest-overall-streak: (max-uint (get longest-overall-streak user-stats) new-current-streak)
+    })
+    (var-set next-care-log-id (+ care-log-id u1))
+    (update-user-reputation tx-sender care-points)
+    (ok care-log-id)
+  )
+)
+
+(define-private (max-uint (a uint) (b uint))
+  (if (> a b) a b)
+)
+
+(define-private (get-care-points (care-type uint) (streak uint))
+  (let ((base-points (if (is-eq care-type u1) u10
+                        (if (is-eq care-type u2) u15
+                           (if (is-eq care-type u3) u20
+                              (if (is-eq care-type u4) u25
+                                 (if (is-eq care-type u5) u30
+                                    (if (is-eq care-type u6) u35 u5))))))))
+    (+ base-points (* streak u2))
+  )
+)
+
 (define-private (update-user-reputation
   (user principal)
   (points uint)
@@ -297,4 +386,35 @@
 
 (define-read-only (get-next-contest-id)
   (var-get next-contest-id)
+)
+
+(define-read-only (get-care-log (log-id uint))
+  (map-get? care-logs log-id)
+)
+
+(define-read-only (get-plant-care-streak (plant-id uint) (care-type uint))
+  (map-get? plant-care-streaks {plant-id: plant-id, care-type: care-type})
+)
+
+(define-read-only (get-user-care-stats (user principal))
+  (map-get? user-care-stats user)
+)
+
+(define-read-only (get-plant-health-score (plant-id uint))
+  (let ((plant (unwrap! (map-get? plants plant-id) (err u0)))
+        (watering-data (default-to {current-streak: u0, longest-streak: u0, last-care-block: u0}
+                                  (map-get? plant-care-streaks {plant-id: plant-id, care-type: u1})))
+        (fertilizing-data (default-to {current-streak: u0, longest-streak: u0, last-care-block: u0}
+                                     (map-get? plant-care-streaks {plant-id: plant-id, care-type: u2})))
+        (pruning-data (default-to {current-streak: u0, longest-streak: u0, last-care-block: u0}
+                                 (map-get? plant-care-streaks {plant-id: plant-id, care-type: u3})))
+        (watering-streak (get current-streak watering-data))
+        (fertilizing-streak (get current-streak fertilizing-data))
+        (pruning-streak (get current-streak pruning-data)))
+    (ok (+ (* watering-streak u40) (* fertilizing-streak u30) (* pruning-streak u20) (* (get growth-stage plant) u10)))
+  )
+)
+
+(define-read-only (get-next-care-log-id)
+  (var-get next-care-log-id)
 )
