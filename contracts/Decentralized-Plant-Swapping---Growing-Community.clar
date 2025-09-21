@@ -4,6 +4,8 @@
 (define-constant err-unauthorized (err u102))
 (define-constant err-already-exists (err u103))
 (define-constant err-invalid-params (err u104))
+(define-constant evolution-rep-threshold u500)
+(define-constant evolution-streak-threshold u5)
 
 (define-data-var next-plant-id uint u1)
 (define-data-var next-swap-id uint u1)
@@ -203,6 +205,20 @@
     (update-user-reputation (get owner plant) (* rating u10))
     (ok true)
   )
+)
+
+(define-public (evolve-plant (plant-id uint))
+ (let ((plant (unwrap! (map-get? plants plant-id) err-not-found))
+       (rep (get reputation plant))
+       (streak-data (default-to {current-streak: u0, longest-streak: u0, last-care-block: u0} (map-get? plant-care-streaks {plant-id: plant-id, care-type: u1})))
+       (longest-streak (get longest-streak streak-data)))
+   (asserts! (is-eq (get owner plant) tx-sender) err-unauthorized)
+   (asserts! (>= rep evolution-rep-threshold) err-invalid-params)
+   (asserts! (>= longest-streak evolution-streak-threshold) err-invalid-params)
+   (asserts! (< (get rarity plant) u5) err-invalid-params)
+   (map-set plants plant-id (merge plant {rarity: (+ (get rarity plant) u1)}))
+   (ok true)
+ )
 )
 
 (define-public (create-contest

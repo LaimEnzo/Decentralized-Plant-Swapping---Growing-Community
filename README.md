@@ -1,4 +1,4 @@
-> A blockchain-powered peer-to-peer network for exchanging plants and sharing gardening knowledge 🌿
+A blockchain-powered peer-to-peer network for exchanging plants and sharing gardening knowledge 🌿
 
 ## 🌟 Overview
 
@@ -12,6 +12,7 @@ This smart contract creates a decentralized community where plant enthusiasts ca
 - ⭐ **Reputation System**: Build credibility through successful swaps and plant care
 - 🏆 **Growth Contests**: Community competitions with DAO-based voting
 - 📈 **Growth Tracking**: Monitor plant development stages over time
+- 🌟 **Plant Evolution**: Transform plants into higher rarity variants through dedicated care and reputation
 
 ## 🚀 Getting Started
 
@@ -45,6 +46,14 @@ clarinet check
 - Updates plant's growth stage
 - Rewards reputation points to owner
 - Parameters: plant-id, new-stage
+
+#### Evolve Plant
+```clarity
+(evolve-plant u1)
+```
+- Evolves plant to next rarity level if conditions met
+- Requires reputation >= 500 and care streak >= 5
+- Parameters: plant-id
 
 ### 🔄 Plant Swapping
 
@@ -113,7 +122,7 @@ clarinet check
   owner: principal,
   name: string,
   species: string,
-  rarity: uint (1-5),
+  rarity: uint (1-5, increases via evolution),
   lat: int,
   lng: int,
   care-instructions: string,
